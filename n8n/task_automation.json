@@ -1,0 +1,160 @@
+{
+  "name": "Organizador de Tarefas com IA",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "organizar-tarefas",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "name": "Receber Solicitações",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "b1000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Confere se o pedido chegou com as solicitações\nconst body = $input.first().json.body || {};\n\nif (!Array.isArray(body.solicitacoes) || body.solicitacoes.length === 0) {\n  throw new Error('Envie o campo \"solicitacoes\" com pelo menos uma tarefa.');\n}\n\nreturn [{\n  json: {\n    equipe_disponivel: Number(body.equipe_disponivel) || 1,\n    solicitacoes: body.solicitacoes\n  }\n}];"
+      },
+      "id": "b1000000-0000-4000-8000-000000000002",
+      "name": "Validar Entrada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/tarefas/organizar",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000003",
+      "name": "Chamar API (IA)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transforma o JSON da API em um texto fácil de ler\nconst r = $input.first().json;\n\nconst linhas = r.ordem_execucao.map(t =>\n  `${t.posicao}. [${t.nivel_prioridade}] ${t.titulo} - prazo ${t.prazo} ` +\n  `(${t.dias_restantes} dia(s)) - ${t.justificativa}`\n);\n\nconst texto = [\n  r.resumo,\n  '',\n  ...linhas,\n  '',\n  r.alertas.length ? 'Alertas:\\n- ' + r.alertas.join('\\n- ') : 'Sem alertas.'\n].join('\\n');\n\nreturn [{\n  json: {\n    sucesso: true,\n    comecar_por: r.ordem_execucao[0].titulo,\n    plano_em_texto: texto,\n    resultado: r\n  }\n}];"
+      },
+      "id": "b1000000-0000-4000-8000-000000000004",
+      "name": "Formatar Plano",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000005",
+      "name": "Responder Sucesso",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ sucesso: false, erro: 'Não foi possível acessar a API', detalhe: $json.error ?? $json }) }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000006",
+      "name": "Responder Erro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Receber Solicitações": {
+      "main": [
+        [
+          {
+            "node": "Validar Entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Entrada": {
+      "main": [
+        [
+          {
+            "node": "Chamar API (IA)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamar API (IA)": {
+      "main": [
+        [
+          {
+            "node": "Formatar Plano",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Plano": {
+      "main": [
+        [
+          {
+            "node": "Responder Sucesso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
